@@ -16,6 +16,7 @@
 // </copyright>
 
 using Microsoft.Extensions.Logging;
+using DotNetEnv;  // Added for .env file support
 
 namespace slskd
 {
@@ -267,6 +268,18 @@ namespace slskd
         /// <param name="args">Command line arguments.</param>
         public static void Main(string[] args)
         {
+            // Load environment variables from .env file if present
+            var envPath = Path.Combine(Environment.CurrentDirectory, ".env");
+            if (System.IO.File.Exists(envPath))
+            {
+                Log.Information($"Loading environment variables from {envPath}");
+                Env.Load(envPath);
+            }
+            else
+            {
+                Log.Debug("No .env file found");
+            }
+            
             // populate the properties above so that we can override the default config file if needed, and to
             // check if the application is being run in command mode (run task and quit).
             EnvironmentVariables.Populate(prefix: EnvironmentVariablePrefix);
@@ -400,6 +413,37 @@ namespace slskd
             IsRelayAgent = OptionsAtStartup.Relay.Enabled && OptionsAtStartup.Relay.Mode.ToEnum<RelayMode>() == RelayMode.Agent;
             Flags = OptionsAtStartup.Flags;
 
+            // Get credentials from environment variables if available
+            var soulseekUsername = Environment.GetEnvironmentVariable("SLSKD_USERNAME");
+            var soulseekPassword = Environment.GetEnvironmentVariable("SLSKD_PASSWORD");
+            
+            if (!string.IsNullOrEmpty(soulseekUsername) && !string.IsNullOrEmpty(soulseekPassword))
+            {
+                // Use reflection to set init-only properties
+                var soulseekOptions = OptionsAtStartup.Soulseek;
+                var type = soulseekOptions.GetType();
+                type.GetProperty("Username")?.SetValue(soulseekOptions, soulseekUsername);
+                type.GetProperty("Password")?.SetValue(soulseekOptions, soulseekPassword);
+            }
+            else if (!IsRelayAgent)
+            {
+                Log.Error("Soulseek credentials not provided. Set SLSKD_USERNAME and SLSKD_PASSWORD environment variables.");
+                return;
+            }
+            
+            // Generate random JWT key if not set in configuration
+            string jwtKey = OptionsAtStartup.Web.Authentication.Jwt.Key;
+            if (string.IsNullOrEmpty(jwtKey))
+            {
+                var keyBytes = new byte[32];
+                using (var rng = System.Security.Cryptography.RandomNumberGenerator.Create())
+                {
+                    rng.GetBytes(keyBytes);
+                }
+                jwtKey = Convert.ToBase64String(keyBytes);
+                Log.Warning("Generated random JWT key. For production use, set a fixed key in configuration.");
+            }
+
             ConfigureGlobalLogger();
             Log = Serilog.Log.ForContext(typeof(Program));
 
@@ -496,7 +540,7 @@ namespace slskd
                     });
 
                 builder.Services
-                    .ConfigureAspDotNetServices()
+                    .ConfigureAspDotNetServices(jwtKey)
                     .ConfigureDependencyInjectionContainer();
 
                 var app = builder.Build();
@@ -680,7 +724,7 @@ namespace slskd
             Log.Debug("SQLite threading mode set to {Mode} ({Number})", "SERIALIZED", SQLitePCL.raw.SQLITE_CONFIG_SERIALIZED);
         }
 
-        private static IServiceCollection ConfigureAspDotNetServices(this IServiceCollection services)
+        private static IServiceCollection ConfigureAspDotNetServices(this IServiceCollection services, string jwtKey)
         {
             services.AddCors(options => options.AddPolicy("AllowFrontend", builder => builder
                 .WithOrigins("http://localhost:3000")
@@ -696,10 +740,11 @@ namespace slskd
             services.AddDataProtection()
                 .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(DataDirectory, "misc", ".DataProtection-Keys")));
 
-            var jwtSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(OptionsAtStartup.Web.Authentication.Jwt.Key));
-
-            services.AddSingleton(jwtSigningKey);
             services.AddSingleton<ISecurityService, SecurityService>();
+            
+            // Use the JWT key (either from configuration or generated)
+            var jwtSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+            services.AddSingleton(jwtSigningKey);
 
             if (!OptionsAtStartup.Web.Authentication.Disabled)
             {
@@ -1213,6 +1258,7 @@ namespace slskd
 
             return (filename, password);
         }
+
 
         private static void PrintCommandLineArguments(Type targetType)
         {

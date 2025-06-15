@@ -12,12 +12,16 @@ services:
       - ./slskd_data/data:/app/data:z
       - ./slskd_data/downloads:/app/downloads:z
       - ./slskd_data/uploads:/app/uploads:z
+    env_file:
+      - .env
     environment:
       - SLSKD_HTTP_PORT=5030
       - SLSKD_HTTPS_PORT=5031
       - SLSKD_SLSK_LISTEN_PORT=50300
       - SLSKD_APP_DIR=/app
       - SLSKD_REMOTE_CONFIGURATION=true
+      - SLSKD_USERNAME=${SLSKD_USERNAME}
+      - SLSKD_PASSWORD=${SLSKD_PASSWORD}
 
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:5030/health"]

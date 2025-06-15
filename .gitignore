@@ -29,3 +29,6 @@ slskd_data/
 
 # Docker
 docker-compose.override.yml
+
+# account Settings
+.env

@@ -39,6 +39,10 @@ Monitor the speed and status of downloads, grouped by user and folder.  Click th
 
 slskd can do almost everything the official Soulseek client can; browse user shares, join chat rooms, privately chat with other users.
 
+- **Enhanced Security**: .env file support for credential management
+- **Improved Logging**: Detailed environment variable loading diagnostics
+- **Auto-reconfiguration**: Automatic reload on .env file changes
+
 New features are added all the time!
 
 ## Quick Start
@@ -69,10 +73,18 @@ services:
       - "5030:5030"
       - "5031:5031"
       - "50300:50300"
+    env_file:
+      - .env
     environment:
+      - SLSKD_HTTP_PORT=5030
+      - SLSKD_HTTPS_PORT=5031
+      - SLSKD_SLSK_LISTEN_PORT=50300
+      - SLSKD_APP_DIR=/app
       - SLSKD_REMOTE_CONFIGURATION=true
+      - SLSKD_USERNAME=${SLSKD_USERNAME}
+      - SLSKD_PASSWORD=${SLSKD_PASSWORD}
     volumes:
-      - <path/to/application/data>:/app
+      - <path/to/application/data>:/app:z
     restart: always
 ```
 
@@ -84,13 +96,62 @@ The `SLSKD_REMOTE_CONFIGURATION` environment variable allows you to modify appli
 
 You can find a more in-depth guide to running slskd in Docker [here](https://github.com/slskd/slskd/blob/master/docs/docker.md).
 
+### Using .env for Credentials
+
+For secure credential management, create a `.env` file in your project root:
+
+```env
+SLSKD_USERNAME=your_soulseek_username
+SLSKD_PASSWORD=your_soulseek_password
+```
+
+Then update your `docker-compose.yml` to reference these variables:
+
+```yaml
+env_file:
+  - .env
+environment:
+  - SLSKD_USERNAME=${SLSKD_USERNAME}
+  - SLSKD_PASSWORD=${SLSKD_PASSWORD}
+```
+
+**Security Note:** 
+- Never commit `.env` files to source control
+- Add `.env` to your `.gitignore` file
+- Consider using Docker secrets for production deployments
+
+### Troubleshooting Permission Issues
+
+If you encounter errors like "Directory /app/data is not writeable":
+- Add `:z` suffix to volume mounts in docker-compose.yml
+- Set proper permissions on host directories:
+  ```bash
+  sudo chown -R $USER:$USER <path/to/application/data>
+  sudo chmod -R 755 <path/to/application/data>
+  ```
+This is especially important on SELinux-enabled systems.
+
+### Troubleshooting .env Issues
+
+If your environment variables aren't loading:
+1. Verify `.env` is in the same directory as `docker-compose.yml`
+2. Check variable names match exactly (case-sensitive)
+3. Restart container: `docker-compose up -d --force-recreate`
+4. View variables: `docker-compose exec slskd env`
+
 ### With Binaries
 
 The latest stable binaries can be downloaded from the [releases](https://github.com/slskd/slskd/releases) page. Platform-specific binaries and the static content for the Web UI are produced as artifacts from every [build](https://github.com/slskd/slskd/actions?query=workflow%3ACI) if you'd prefer to use a canary release.
 
 Binaries are shipped as zip files; extract the zip to your chosen directory and run.
 
-An application directory will be created in either `~/.local/share/slskd` (on Linux and macOS) or `%localappdata%/slskd` (on Windows).  In the root of this directory the file `slskd.yml` will be created the first time the application runs.  Edit this file to enter your credentials for the Soulseek network, and tweak any additional settings using the [configuration guide](https://github.com/slskd/slskd/blob/master/docs/config.md).
+> **Note**: Ensure the application directory has proper write permissions:
+> ```bash
+> sudo chown -R $USER:$USER ~/.local/share/slskd
+> sudo chmod -R 755 ~/.local/share/slskd
+> ```
+>
+> An application directory will be created in either `~/.local/share/slskd` (on Linux and macOS) or `%localappdata%/slskd` (on Windows).  In the root of this directory the file `slskd.yml` will be created the first time the application runs.  Edit this file to enter your credentials for the Soulseek network, and tweak any additional settings using the [configuration guide](https://github.com/slskd/slskd/blob/master/docs/config.md).
 
 ## Configuration
 
