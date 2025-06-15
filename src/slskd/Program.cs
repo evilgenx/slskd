@@ -682,8 +682,9 @@ namespace slskd
 
         private static IServiceCollection ConfigureAspDotNetServices(this IServiceCollection services)
         {
-            services.AddCors(options => options.AddPolicy("AllowAll", builder => builder
-                .SetIsOriginAllowed((host) => true)
+            services.AddCors(options => options.AddPolicy("AllowFrontend", builder => builder
+                .WithOrigins("http://localhost:3000")
+                .SetIsOriginAllowedToAllowWildcardSubdomains()
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials()
@@ -903,7 +904,7 @@ namespace slskd
                 await context.Response.WriteAsJsonAsync(context.Features.Get<IExceptionHandlerPathFeature>().Error.Message);
             }));
 
-            app.UseCors("AllowAll");
+            app.UseCors("AllowFrontend");
 
             if (OptionsAtStartup.Web.Https.Force)
             {

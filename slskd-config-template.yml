@@ -1,0 +1,47 @@
+# Soulseek client configuration
+# Place this file in your mounted volume directory (default /app)
+
+# Network settings
+network:
+  listen_port: 50300  # Soulseek listening port
+  port_range:         # Port range for transfers
+    min: 50000
+    max: 50009
+
+# Soulseek credentials (REQUIRED)
+soulseek:
+  username: ""        # Your Soulseek username
+  password: ""        # Your Soulseek password
+
+# Web interface settings
+web:
+  http_port: 5030     # HTTP port
+  https_port: 5031    # HTTPS port (set to 0 to disable)
+  base_url: "/"       # Base URL path
+
+# Shares configuration
+shares:
+  directories:        # List of directories to share
+    - path: ""        # Directory path
+      name: ""        # Display name (optional)
+  exclude:            # Patterns to exclude
+    files: []
+    directories: []
+    extensions: []
+
+# Download settings
+downloads:
+  directory: "/app/downloads"  # Download location
+  temporary_directory: "/app/incomplete"  # Temp files location
+
+# Upload settings
+uploads:
+  slots: 3            # Max simultaneous uploads
+  speed_limit: 0      # KB/s (0 = unlimited)
+
+# Optional integrations
+integrations:
+  pushbullet:
+    enabled: false
+    token: ""
+  webhooks: []
