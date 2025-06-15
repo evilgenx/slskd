@@ -39,23 +39,32 @@ ARG VERSION=0.0.1.65534-local
 ARG REVISION=0
 ARG BUILD_DATE
 
-RUN apt-get update && apt-get install --no-install-recommends -y \
-  jq \
-  wget \
-  tini \
-  && \
-  rm -rf \
-  /tmp/* \
-  /var/lib/apt/lists/* \
-  /var/cache/apt/* \
-  /var/tmp/*
+# Install security updates and clean up
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get install --no-install-recommends -y \
+      jq \
+      wget \
+      tini \
+    && \
+    rm -rf \
+      /tmp/* \
+      /var/lib/apt/lists/* \
+      /var/cache/apt/* \
+      /var/tmp/*
 
-RUN bash -c 'mkdir -p /app/{incomplete,downloads} \ 
-  && chmod -R 777 /app \
-  && mkdir -p /.net \
-  && chmod 777 /.net'
+# Create non-root user and set permissions
+RUN addgroup --system --gid 1000 appgroup && \
+    adduser --system --uid 1000 --ingroup appgroup appuser && \
+    mkdir -p /app/{incomplete,downloads} && \
+    mkdir -p /.net && \
+    chown -R appuser:appgroup /app /.net
 
 VOLUME /app
+
+# Set resource limits
+RUN echo "appuser hard nofile 65536" >> /etc/security/limits.conf && \
+    echo "appuser soft nofile 65536" >> /etc/security/limits.conf
 
 HEALTHCHECK --interval=60s --timeout=3s --start-period=60m --retries=3 CMD wget -q -O - http://localhost:${SLSKD_HTTP_PORT}/health
 
@@ -89,9 +98,12 @@ LABEL org.opencontainers.image.title=slskd \
   org.opencontainers.image.created=$BUILD_DATE
 
 WORKDIR /slskd
-COPY --from=publish /slskd/dist/${TARGETPLATFORM} .
+COPY --from=publish --chown=appuser:appgroup /slskd/dist/${TARGETPLATFORM}/ ./
 
 RUN echo "umask \$SLSKD_UMASK && ./slskd" > start.sh \
   && chmod +x start.sh
+
+# Run as non-root user
+USER appuser
 
 ENTRYPOINT ["/usr/bin/tini", "--", "./start.sh"]

@@ -17,6 +17,7 @@
 
 using Microsoft.Extensions.Logging;
 using DotNetEnv;  // Added for .env file support
+using slskd.Common.Middleware;
 
 namespace slskd
 {
@@ -949,7 +950,15 @@ namespace slskd
                 await context.Response.WriteAsJsonAsync(context.Features.Get<IExceptionHandlerPathFeature>().Error.Message);
             }));
 
+            app.UseForwardedHeaders();
             app.UseCors("AllowFrontend");
+
+            // Apply rate limiting to authentication endpoints
+            app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v0/auth"),
+                appBuilder => 
+                {
+                    appBuilder.UseMiddleware<RateLimitingMiddleware>();
+                });
 
             if (OptionsAtStartup.Web.Https.Force)
             {
@@ -1001,6 +1010,7 @@ namespace slskd
             app.UseAuthentication();
             app.UseRouting();
             app.UseAuthorization();
+            app.UseMiddleware<SecurityHeadersMiddleware>();
 
             // starting with .NET 7 the framework *really* wants you to use top level endpoint mapping
             // for whatever reason this breaks everything, and i just can't bring myself to care unless

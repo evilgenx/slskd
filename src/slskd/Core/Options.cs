@@ -310,6 +310,12 @@ namespace slskd
         public SoulseekOptions Soulseek { get; init; } = new SoulseekOptions();
 
         /// <summary>
+        ///     Gets options for security features.
+        /// </summary>
+        [Validate]
+        public SecurityOptions Security { get; init; } = new SecurityOptions();
+
+        /// <summary>
         ///     Gets options for external integrations.
         /// </summary>
         [Validate]
@@ -2044,32 +2050,87 @@ namespace slskd
         /// <summary>
         ///     Options for external integrations.
         /// </summary>
-        public class IntegrationOptions
+    public class SecurityOptions
+    {
+        /// <summary>
+        ///     Gets rate limiting options.
+        /// </summary>
+        [Validate]
+        public RateLimitingOptions RateLimiting { get; init; } = new RateLimitingOptions();
+
+        /// <summary>
+        ///     Gets security header options.
+        /// </summary>
+        [Validate]
+        public HeadersOptions Headers { get; init; } = new HeadersOptions();
+
+        public class RateLimitingOptions
         {
             /// <summary>
-            ///     Gets webhook configuration.
+            ///     Gets a value indicating whether rate limiting is enabled.
             /// </summary>
-            [Validate]
-            public Dictionary<string, WebhookOptions> Webhooks { get; init; } = [];
+            public bool Enabled { get; init; } = true;
 
             /// <summary>
-            ///     Gets script configuration.
+            ///     Gets the number of allowed login attempts per minute.
             /// </summary>
-            [Validate]
-            public Dictionary<string, ScriptOptions> Scripts { get; init; } = [];
+            public int LoginAttempts { get; init; } = 5;
 
             /// <summary>
-            ///     Gets FTP options.
+            ///     Gets the time window in minutes for rate limiting.
             /// </summary>
-            [Validate]
-            public FtpOptions Ftp { get; init; } = new FtpOptions();
+            public int WindowMinutes { get; init; } = 1;
+        }
+
+        public class HeadersOptions
+        {
+            /// <summary>
+            ///     Gets a value indicating whether security headers are enabled.
+            /// </summary>
+            public bool Enabled { get; init; } = true;
 
             /// <summary>
-            ///     Gets Pushbullet options.
+            ///     Gets the Content-Security-Policy header value.
             /// </summary>
-            [Validate]
-            public PushbulletOptions Pushbullet { get; init; } = new PushbulletOptions();
+            public string ContentSecurityPolicy { get; init; } = "default-src 'self'";
 
+            /// <summary>
+            ///     Gets the Strict-Transport-Security header value.
+            /// </summary>
+            public string StrictTransportSecurity { get; init; } = "max-age=63072000; includeSubDomains";
+
+            /// <summary>
+            ///     Gets the Public-Key-Pins header value for certificate pinning.
+            /// </summary>
+            public string PublicKeyPins { get; init; } = null;
+        }
+    }
+
+    public class IntegrationOptions
+    {
+        /// <summary>
+        ///     Gets webhook configuration.
+        /// </summary>
+        [Validate]
+        public Dictionary<string, WebhookOptions> Webhooks { get; init; } = [];
+
+        /// <summary>
+        ///     Gets script configuration.
+        /// </summary>
+        [Validate]
+        public Dictionary<string, ScriptOptions> Scripts { get; init; } = [];
+
+        /// <summary>
+        ///     Gets FTP options.
+        /// </summary>
+        [Validate]
+        public FtpOptions Ftp { get; init; } = new FtpOptions();
+
+        /// <summary>
+        ///     Gets Pushbullet options.
+        /// </summary>
+        [Validate]
+        public PushbulletOptions Pushbullet { get; init; } = new PushbulletOptions();
             /// <summary>
             ///     Webhook configuration.
             /// </summary>
