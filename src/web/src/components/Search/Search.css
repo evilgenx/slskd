@@ -82,6 +82,20 @@
   margin-top: 1rem;
 }
 
+.file-type-filters {
+  margin-top: 1rem;
+}
+
+.file-type-filters .ui.buttons .button {
+  padding: 0.5em 0.8em;
+  font-size: 0.9em;
+}
+
+.file-type-filters .ui.buttons .button.active {
+  background-color: #2185d0;
+  color: white;
+}
+
 .search-list-icon {
   width: 40px !important;
 }

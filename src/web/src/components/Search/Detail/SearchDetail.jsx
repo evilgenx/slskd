@@ -215,6 +215,75 @@ const SearchDetail = ({
                 toggle
               />
             </div>
+            <div className="file-type-buttons">
+              <Button.Group>
+                <Button
+                  active={resultFilters.includes(' .mp3')}
+                  onClick={() =>
+                    setResultFilters(
+                      resultFilters.includes(' .mp3')
+                        ? resultFilters.replace(' .mp3', '')
+                        : `${resultFilters} .mp3`.trim(),
+                    )
+                  }
+                  toggle
+                >
+                  MP3
+                </Button>
+                <Button
+                  active={resultFilters.includes(' .flac')}
+                  onClick={() =>
+                    setResultFilters(
+                      resultFilters.includes(' .flac')
+                        ? resultFilters.replace(' .flac', '')
+                        : `${resultFilters} .flac`.trim(),
+                    )
+                  }
+                  toggle
+                >
+                  FLAC
+                </Button>
+                <Button
+                  active={resultFilters.includes(' .mp4')}
+                  onClick={() =>
+                    setResultFilters(
+                      resultFilters.includes(' .mp4')
+                        ? resultFilters.replace(' .mp4', '')
+                        : `${resultFilters} .mp4`.trim(),
+                    )
+                  }
+                  toggle
+                >
+                  MP4
+                </Button>
+                <Button
+                  active={resultFilters.includes(' .mkv')}
+                  onClick={() =>
+                    setResultFilters(
+                      resultFilters.includes(' .mkv')
+                        ? resultFilters.replace(' .mkv', '')
+                        : `${resultFilters} .mkv`.trim(),
+                    )
+                  }
+                  toggle
+                >
+                  MKV
+                </Button>
+                <Button
+                  active={resultFilters.includes(' .pdf')}
+                  onClick={() =>
+                    setResultFilters(
+                      resultFilters.includes(' .pdf')
+                        ? resultFilters.replace(' .pdf', '')
+                        : `${resultFilters} .pdf`.trim(),
+                    )
+                  }
+                  toggle
+                >
+                  PDF
+                </Button>
+              </Button.Group>
+            </div>
             <Input
               action={
                 Boolean(resultFilters) && {
@@ -226,10 +295,7 @@ const SearchDetail = ({
               className="search-filter"
               label={{ content: 'Filter', icon: 'filter' }}
               onChange={(_event, data) => setResultFilters(data.value)}
-              placeholder="
-                lackluster container -bothersome iscbr|isvbr islossless|islossy 
-                minbitrate:320 minbitdepth:24 minfilesize:10 minfilesinfolder:8 minlength:5000
-              "
+              placeholder="lackluster container -bothersome iscbr|isvbr islossless|islossy minbitrate:320 minbitdepth:24 minfilesize:10 minfilesinfolder:8 minlength:5000"
               value={resultFilters}
             />
           </Segment>

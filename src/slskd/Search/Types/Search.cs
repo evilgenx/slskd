@@ -56,5 +56,8 @@ namespace slskd.Search
         public DateTime StartedAt { get; init; } = DateTime.Now;
         public SearchStates State { get; set; }
         public int Token { get; init; }
+        
+        [NotMapped]
+        public List<string> FileTypes { get; set; } = new List<string>();
     }
 }

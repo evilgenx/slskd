@@ -50,6 +50,24 @@ namespace slskd
         Task<int> GetAsync(int count, CancellationToken cancellationToken = default);
 
         /// <summary>
+        ///     Attempts to retrieve the specified token <paramref name="count"/> from the bucket without waiting.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         If the requested <paramref name="count"/> exceeds the bucket <see cref="Capacity"/>, the request is lowered to
+        ///         the capacity of the bucket.
+        ///     </para>
+        ///     <para>If the bucket has tokens available, but fewer than the requested amount, the available tokens are returned.</para>
+        ///     <para>
+        ///         If the bucket has no tokens available, returns false immediately without waiting.
+        ///     </para>
+        /// </remarks>
+        /// <param name="count">The number of tokens to retrieve.</param>
+        /// <param name="tokensTaken">The number of tokens actually taken.</param>
+        /// <returns>True if tokens were available, false otherwise.</returns>
+        bool TryTake(int count, out int tokensTaken);
+
+        /// <summary>
         ///     Returns the specified token <paramref name="count"/> to the bucket.
         /// </summary>
         /// <remarks>
@@ -147,6 +165,45 @@ namespace slskd
         public Task<int> GetAsync(int count, CancellationToken cancellationToken = default)
         {
             return GetInternalAsync(Math.Min(count, (int)Math.Min(int.MaxValue, Capacity)), cancellationToken);
+        }
+
+        /// <summary>
+        ///     Attempts to retrieve the specified token <paramref name="count"/> from the bucket without waiting.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         If the requested <paramref name="count"/> exceeds the bucket <see cref="Capacity"/>, the request is lowered to
+        ///         the capacity of the bucket.
+        ///     </para>
+        ///     <para>If the bucket has tokens available, but fewer than the requested amount, the available tokens are returned.</para>
+        ///     <para>
+        ///         If the bucket has no tokens available, returns false immediately without waiting.
+        ///     </para>
+        /// </remarks>
+        /// <param name="count">The number of tokens to retrieve.</param>
+        /// <param name="tokensTaken">The number of tokens actually taken.</param>
+        /// <returns>True if tokens were available, false otherwise.</returns>
+        public bool TryTake(int count, out int tokensTaken)
+        {
+            tokensTaken = 0;
+            count = Math.Min(count, (int)Math.Min(int.MaxValue, Capacity));
+
+            if (!SyncRoot.Wait(0))
+                return false;
+
+            try
+            {
+                if (CurrentCount == 0)
+                    return false;
+
+                tokensTaken = (int)Math.Min(CurrentCount, count);
+                CurrentCount -= tokensTaken;
+                return true;
+            }
+            finally
+            {
+                SyncRoot.Release();
+            }
         }
 
         /// <summary>

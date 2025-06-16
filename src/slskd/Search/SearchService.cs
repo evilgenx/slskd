@@ -228,15 +228,39 @@ namespace slskd.Search
 
             var rateLimiter = new RateLimiter(250);
 
+            // Extract file types from search text
+            var fileTypes = new List<string>();
+            var searchText = query.SearchText;
+            
+            // Common file type patterns
+            var typePatterns = new Dictionary<string, string[]>
+            {
+                { "audio", new[] { "mp3", "flac", "wav", "aac", "ogg", "m4a" } },
+                { "video", new[] { "mp4", "mkv", "avi", "mov", "wmv" } },
+                { "document", new[] { "pdf", "doc", "docx", "txt", "rtf" } },
+                { "image", new[] { "jpg", "jpeg", "png", "gif", "bmp" } },
+                { "archive", new[] { "zip", "rar", "7z", "tar", "gz" } }
+            };
+
+            // Check for file type filters in search text
+            foreach (var type in typePatterns)
+            {
+                if (type.Value.Any(ext => searchText.Contains($" .{ext} ", StringComparison.OrdinalIgnoreCase) || 
+                                         searchText.EndsWith($".{ext}", StringComparison.OrdinalIgnoreCase)))
+                {
+                    fileTypes.Add(type.Key);
+                }
+            }
+
             // initialize the search record, save it to the database, and broadcast the creation
-            // we do this so the UI has some feedback to show to the user that we've gotten their request
             var search = new Search()
             {
-                SearchText = query.SearchText,
+                SearchText = searchText,
                 Token = token,
                 Id = id,
                 State = SearchStates.Requested,
                 StartedAt = DateTime.UtcNow,
+                FileTypes = fileTypes
             };
 
             bool searchCreated = false;

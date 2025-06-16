@@ -236,7 +236,7 @@ const Searches = ({ server } = {}) => {
               data-lpignore="true"
               placeholder={
                 server.isConnected
-                  ? 'Search phrase'
+                  ? 'Search phrase (e.g. "artist .mp3")'
                   : 'Connect to server to perform a search'
               }
               type="search"
@@ -244,10 +244,54 @@ const Searches = ({ server } = {}) => {
           }
           loading={creating}
           onKeyUp={(keyUpEvent) => (keyUpEvent.key === 'Enter' ? create() : '')}
-          placeholder="Search phrase"
+          placeholder="Search phrase (e.g. 'artist .mp3')"
           ref={inputRef}
           size="big"
         />
+        <div className="file-type-filters">
+          <Button.Group>
+            <Button
+              basic
+              onClick={() => {
+                inputRef.current.inputRef.current.value += ' .mp3';
+              }}
+            >
+              MP3
+            </Button>
+            <Button
+              basic
+              onClick={() => {
+                inputRef.current.inputRef.current.value += ' .flac';
+              }}
+            >
+              FLAC
+            </Button>
+            <Button
+              basic
+              onClick={() => {
+                inputRef.current.inputRef.current.value += ' .mp4';
+              }}
+            >
+              MP4
+            </Button>
+            <Button
+              basic
+              onClick={() => {
+                inputRef.current.inputRef.current.value += ' .mkv';
+              }}
+            >
+              MKV
+            </Button>
+            <Button
+              basic
+              onClick={() => {
+                inputRef.current.inputRef.current.value += ' .pdf';
+              }}
+            >
+              PDF
+            </Button>
+          </Button.Group>
+        </div>
       </Segment>
       {Object.keys(searches).length === 0 ? (
         <PlaceholderSegment
