@@ -1,4 +1,9 @@
 import './Search.css';
+import React, { useEffect, useRef, useState } from 'react';
+import { useHistory, useParams, useRouteMatch } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import { Button, Card, Icon, Input, List, Segment } from 'semantic-ui-react';
+import { v4 as uuidv4 } from 'uuid';
 import { createSearchHubConnection } from '../../lib/hubFactory';
 import * as library from '../../lib/searches';
 import ErrorSegment from '../Shared/ErrorSegment';
@@ -6,11 +11,9 @@ import LoaderSegment from '../Shared/LoaderSegment';
 import PlaceholderSegment from '../Shared/PlaceholderSegment';
 import SearchDetail from './Detail/SearchDetail';
 import SearchList from './List/SearchList';
-import React, { useEffect, useRef, useState } from 'react';
-import { useHistory, useParams, useRouteMatch } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { Button, Icon, Input, Segment } from 'semantic-ui-react';
-import { v4 as uuidv4 } from 'uuid';
+
+const SEARCH_HISTORY_KEY = 'slskd_search_history';
+const MAX_SEARCH_HISTORY = 10;
 
 const Searches = ({ server } = {}) => {
   const [connecting, setConnecting] = useState(true);
@@ -20,6 +23,7 @@ const Searches = ({ server } = {}) => {
   const [removing, setRemoving] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [searchHistory, setSearchHistory] = useState([]);
 
   const inputRef = useRef();
 
@@ -48,6 +52,22 @@ const Searches = ({ server } = {}) => {
 
   useEffect(() => {
     onConnecting();
+
+    // Load search history from local storage
+    try {
+      const storedHistory = JSON.parse(
+        localStorage.getItem(SEARCH_HISTORY_KEY),
+      );
+      if (Array.isArray(storedHistory)) {
+        setSearchHistory(storedHistory);
+      }
+    } catch (error_) {
+      console.error(
+        'Failed to parse search history from local storage',
+        error_,
+      );
+      localStorage.removeItem(SEARCH_HISTORY_KEY); // Clear corrupted data
+    }
 
     const searchHub = createSearchHubConnection();
 
@@ -121,6 +141,20 @@ const Searches = ({ server } = {}) => {
 
       setCreating(false);
 
+      // Add to search history
+      setSearchHistory((previousHistory) => {
+        const newHistory = [
+          searchText,
+          ...previousHistory.filter((item) => item !== searchText),
+        ];
+        const trimmedHistory = newHistory.slice(0, MAX_SEARCH_HISTORY);
+        localStorage.setItem(
+          SEARCH_HISTORY_KEY,
+          JSON.stringify(trimmedHistory),
+        );
+        return trimmedHistory;
+      });
+
       if (navigate) {
         history.push(`${match.url.replace(`/${searchId}`, '')}/${id}`);
       }
@@ -131,6 +165,11 @@ const Searches = ({ server } = {}) => {
       );
       setCreating(false);
     }
+  };
+
+  const reSearch = (text) => {
+    inputRef.current.inputRef.current.value = text;
+    create();
   };
 
   // delete a search
@@ -293,6 +332,29 @@ const Searches = ({ server } = {}) => {
           </Button.Group>
         </div>
       </Segment>
+      {searchHistory.length > 0 && (
+        <Segment raised>
+          <Card.Header>Recent Searches</Card.Header>
+          <List
+            divided
+            relaxed
+          >
+            {searchHistory.map((searchText) => (
+              <List.Item key={searchText}>
+                <List.Content floated="right">
+                  <Button
+                    onClick={() => reSearch(searchText)}
+                    size="tiny"
+                  >
+                    Re-search
+                  </Button>
+                </List.Content>
+                <List.Content>{searchText}</List.Content>
+              </List.Item>
+            ))}
+          </List>
+        </Segment>
+      )}
       {Object.keys(searches).length === 0 ? (
         <PlaceholderSegment
           caption="No searches to display"

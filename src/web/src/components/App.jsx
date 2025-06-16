@@ -21,6 +21,7 @@ import { Link, Redirect, Route, Switch } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import {
   Button,
+  Checkbox,
   Header,
   Icon,
   Loader,
@@ -209,7 +210,7 @@ class App extends Component {
     return localStorage.getItem('slskd-theme');
   };
 
-  toggleTheme = () => {
+  handleToggleTheme = () => {
     this.setState((state) => {
       const newTheme = state.theme === 'dark' ? 'light' : 'dark';
       localStorage.setItem('slskd-theme', newTheme);
@@ -404,9 +405,13 @@ class App extends Component {
               className="right"
               inverted
             >
-              <Menu.Item onClick={() => this.toggleTheme()}>
-                <Icon name="theme" />
-                Theme
+              <Menu.Item>
+                <Checkbox
+                  checked={theme === 'dark'}
+                  label="Dark Mode"
+                  onChange={this.handleToggleTheme}
+                  toggle
+                />
               </Menu.Item>
               <ModeSpecificConnectButton
                 controller={controller}

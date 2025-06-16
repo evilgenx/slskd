@@ -23,6 +23,16 @@ const sortDropdownOptions = [
     text: 'Queue Depth (Least to Most)',
     value: 'queueLength',
   },
+  {
+    key: 'fileSize',
+    text: 'File Size (Largest to Smallest)',
+    value: 'fileSize',
+  },
+  {
+    key: 'fileName',
+    text: 'File Name (A-Z)',
+    value: 'fileName',
+  },
 ];
 
 const SearchDetail = ({
@@ -48,6 +58,7 @@ const SearchDetail = ({
   const [resultSort, setResultSort] = useState('uploadSpeed');
   const [hideLocked, setHideLocked] = useState(true);
   const [hideNoFreeSlots, setHideNoFreeSlots] = useState(false);
+  const [hideDuplicates, setHideDuplicates] = useState(false);
   const [foldResults, setFoldResults] = useState(false);
   const [resultFilters, setResultFilters] = useState('');
   const [displayCount, setDisplayCount] = useState(5);
@@ -85,11 +96,9 @@ const SearchDetail = ({
       uploadSpeed: { field: 'uploadSpeed', order: 'desc' },
     };
 
-    const { field, order } = sortOptions[resultSort];
-
     const filters = parseFiltersFromString(resultFilters);
 
-    return results
+    let processedResults = results
       .filter((r) => !hiddenResults.includes(r.username))
       .map((r) => {
         if (hideLocked) {
@@ -100,25 +109,58 @@ const SearchDetail = ({
       })
       .map((response) => filterResponse({ filters, response }))
       .filter((r) => r.fileCount + r.lockedFileCount > 0)
-      .filter((r) => !(hideNoFreeSlots && !r.hasFreeUploadSlot))
-      .sort((a, b) => {
+      .filter((r) => !(hideNoFreeSlots && !r.hasFreeUploadSlot));
+
+    if (hideDuplicates) {
+      const seenFiles = new Set();
+      const uniqueResults = [];
+
+      for (const response of processedResults) {
+        const uniqueFilesForResponse = [];
+        for (const file of response.files) {
+          const fileIdentifier = `${file.filename}-${file.size}`;
+          if (!seenFiles.has(fileIdentifier)) {
+            seenFiles.add(fileIdentifier);
+            uniqueFilesForResponse.push(file);
+          }
+        }
+        if (uniqueFilesForResponse.length > 0) {
+          uniqueResults.push({ ...response, files: uniqueFilesForResponse });
+        }
+      }
+      processedResults = uniqueResults;
+    }
+
+    return processedResults.sort((a, b) => {
+      if (resultSort === 'fileSize') {
+        const aSize = a.files.reduce((sum, file) => sum + file.size, 0);
+        const bSize = b.files.reduce((sum, file) => sum + file.size, 0);
+        return bSize - aSize; // Largest to Smallest
+      } else if (resultSort === 'fileName') {
+        const aFileName = a.files[0]?.filename || '';
+        const bFileName = b.files[0]?.filename || '';
+        return aFileName.localeCompare(bFileName); // A-Z
+      } else {
+        const { field, order } = sortOptions[resultSort];
         if (order === 'asc') {
           return a[field] - b[field];
         }
-
         return b[field] - a[field];
-      });
+      }
+    });
   }, [
     hiddenResults,
+    hideDuplicates,
     hideLocked,
     hideNoFreeSlots,
     resultFilters,
-    resultSort,
     results,
+    resultSort,
   ]);
 
   // when a user uses the action buttons, we will *probably* re-use this component,
   // but with a new search ID.  clear everything to prepare for the transition
+
   const reset = () => {
     setLoading(false);
     setError(undefined);
@@ -208,81 +250,19 @@ const SearchDetail = ({
                 toggle
               />
               <Checkbox
+                checked={hideDuplicates}
+                className="search-options-hide-duplicates"
+                label="Hide Duplicates"
+                onChange={() => setHideDuplicates(!hideDuplicates)}
+                toggle
+              />
+              <Checkbox
                 checked={foldResults}
                 className="search-options-fold-results"
                 label="Fold Results"
                 onChange={() => setFoldResults(!foldResults)}
                 toggle
               />
-            </div>
-            <div className="file-type-buttons">
-              <Button.Group>
-                <Button
-                  active={resultFilters.includes(' .mp3')}
-                  onClick={() =>
-                    setResultFilters(
-                      resultFilters.includes(' .mp3')
-                        ? resultFilters.replace(' .mp3', '')
-                        : `${resultFilters} .mp3`.trim(),
-                    )
-                  }
-                  toggle
-                >
-                  MP3
-                </Button>
-                <Button
-                  active={resultFilters.includes(' .flac')}
-                  onClick={() =>
-                    setResultFilters(
-                      resultFilters.includes(' .flac')
-                        ? resultFilters.replace(' .flac', '')
-                        : `${resultFilters} .flac`.trim(),
-                    )
-                  }
-                  toggle
-                >
-                  FLAC
-                </Button>
-                <Button
-                  active={resultFilters.includes(' .mp4')}
-                  onClick={() =>
-                    setResultFilters(
-                      resultFilters.includes(' .mp4')
-                        ? resultFilters.replace(' .mp4', '')
-                        : `${resultFilters} .mp4`.trim(),
-                    )
-                  }
-                  toggle
-                >
-                  MP4
-                </Button>
-                <Button
-                  active={resultFilters.includes(' .mkv')}
-                  onClick={() =>
-                    setResultFilters(
-                      resultFilters.includes(' .mkv')
-                        ? resultFilters.replace(' .mkv', '')
-                        : `${resultFilters} .mkv`.trim(),
-                    )
-                  }
-                  toggle
-                >
-                  MKV
-                </Button>
-                <Button
-                  active={resultFilters.includes(' .pdf')}
-                  onClick={() =>
-                    setResultFilters(
-                      resultFilters.includes(' .pdf')
-                        ? resultFilters.replace(' .pdf', '')
-                        : `${resultFilters} .pdf`.trim(),
-                    )
-                  }
-                  toggle
-                >
-                  PDF
-                </Button>
-              </Button.Group>
             </div>
             <Input
               action={

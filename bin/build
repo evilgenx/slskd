@@ -62,6 +62,9 @@ else
       npm run test-unattended
   fi
 
+  echo $'\n\t🛠️  npm run lint:fix\n'
+  npm run lint:fix
+
   echo $'\n\t🛠️  npm run build\n'
   npm run build
 
