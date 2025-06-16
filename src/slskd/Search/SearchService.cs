@@ -112,18 +112,21 @@ namespace slskd.Search
         /// <param name="soulseekClient"></param>
         /// <param name="contextFactory">The database context to use.</param>
         /// <param name="memoryCache">The memory cache to use.</param>
+        /// <param name="userService">The user service to use.</param>
         public SearchService(
             IHubContext<SearchHub> searchHub,
             IOptionsMonitor<Options> optionsMonitor,
             ISoulseekClient soulseekClient,
             IDbContextFactory<SearchDbContext> contextFactory,
-            IMemoryCache memoryCache)
+            IMemoryCache memoryCache,
+            Users.IUserService userService)
         {
             SearchHub = searchHub;
             OptionsMonitor = optionsMonitor;
             Client = soulseekClient;
             ContextFactory = contextFactory;
             MemoryCache = memoryCache;
+            UserService = userService;
         }
 
         private const string SearchCacheKey = "SearchCache";
@@ -137,6 +140,7 @@ namespace slskd.Search
         private IMemoryCache MemoryCache { get; }
         private IOptionsMonitor<Options> OptionsMonitor { get; }
         private IHubContext<SearchHub> SearchHub { get; set; }
+        private Users.IUserService UserService { get; }
 
         /// <summary>
         ///     Deletes the specified search.
@@ -367,7 +371,14 @@ namespace slskd.Search
                         }
 
                         search.EndedAt = DateTime.UtcNow;
-                        search.Responses = responses.Select(r => Response.FromSoulseekSearchResponse(r));
+                        var searchResponses = responses.Select(r =>
+                        {
+                            var response = Response.FromSoulseekSearchResponse(r);
+                            // Get and assign user group
+                            response.UserGroup = UserService.GetGroup(response.Username);
+                            return response;
+                        }).ToList();
+                        search.Responses = searchResponses;
 
                         Update(search);
 
@@ -376,7 +387,7 @@ namespace slskd.Search
 
                         // zero responses before broadcasting, as we don't want to blast this
                         // data out over the SignalR socket
-                        await SearchHub.BroadcastUpdateAsync(search with { Responses = [] });
+                        await SearchHub.BroadcastUpdateAsync(search with { Responses = new List<Response>() });
 
                         Log.Debug("Search for '{Query}' finalized (id: {Id}): {Search}", query, id, search with { Responses = [] });
                     }

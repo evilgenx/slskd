@@ -178,8 +178,8 @@ class Response extends Component {
           </Card.Header>
           <Card.Meta className="result-meta">
             <span>
-              Upload Speed: {formatBytes(response.uploadSpeed)}/s, Free Upload
-              Slot: {free ? 'YES' : 'NO'}, Queue Length: {response.queueLength}
+              User Group: {response.userGroup || 'Default'} | Upload Speed: {formatBytes(response.uploadSpeed)}/s | Free Upload
+              Slot: {free ? 'YES' : 'NO'} | Queue Length: {response.queueLength}
             </span>
           </Card.Meta>
           {((!isFolded && Object.keys(tree)) || []).map((directory) => (

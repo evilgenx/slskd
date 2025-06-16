@@ -31,6 +31,7 @@ namespace slskd.Search
         public int Token { get; init; }
         public int UploadSpeed { get; init; }
         public string Username { get; init; }
+        public string UserGroup { get; set; } // Added UserGroup property
 
         public static Response FromSoulseekSearchResponse(Soulseek.SearchResponse searchResponse)
         {
