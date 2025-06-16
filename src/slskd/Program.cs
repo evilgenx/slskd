@@ -727,6 +727,7 @@ namespace slskd
 
         private static IServiceCollection ConfigureAspDotNetServices(this IServiceCollection services, string jwtKey)
         {
+            services.AddMemoryCache(); // Add this line to register IMemoryCache
             services.AddCors(options => options.AddPolicy("AllowFrontend", builder => builder
                 .WithOrigins("http://localhost:3000")
                 .SetIsOriginAllowedToAllowWildcardSubdomains()

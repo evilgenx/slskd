@@ -20,6 +20,7 @@ using Microsoft.Extensions.Options;
 namespace slskd.Search.API
 {
     using System;
+    using System.Linq;
     using System.Threading.Tasks;
     using Asp.Versioning;
     using Microsoft.AspNetCore.Authorization;
@@ -132,12 +133,14 @@ namespace slskd.Search.API
         ///     Gets the state of the search corresponding to the specified <paramref name="id"/>.
         /// </summary>
         /// <param name="id">The unique id of the search.</param>
+        /// <param name="skip">The number of responses to skip.</param>
+        /// <param name="take">The number of responses to take.</param>
         /// <returns></returns>
         /// <response code="200">The request completed successfully.</response>
         /// <response code="404">A matching search was not found.</response>
         [HttpGet("{id}/responses")]
         [Authorize(Policy = AuthPolicy.Any)]
-        public async Task<IActionResult> GetResponsesById([FromRoute] Guid id)
+        public async Task<IActionResult> GetResponsesById([FromRoute] Guid id, [FromQuery] int skip = 0, [FromQuery] int take = 25)
         {
             if (Program.IsRelayAgent)
             {
@@ -151,7 +154,9 @@ namespace slskd.Search.API
                 return NotFound();
             }
 
-            return Ok(search.Responses);
+            var responses = search.Responses.Skip(skip).Take(take).ToList();
+
+            return Ok(responses);
         }
 
         /// <summary>

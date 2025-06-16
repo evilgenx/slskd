@@ -61,21 +61,22 @@ const SearchDetail = ({
   const [hideDuplicates, setHideDuplicates] = useState(false);
   const [foldResults, setFoldResults] = useState(false);
   const [resultFilters, setResultFilters] = useState('');
-  const [displayCount, setDisplayCount] = useState(5);
+  const [loadedCount, setLoadedCount] = useState(0);
+  const PAGE_SIZE = 25; // Define a page size for lazy loading
 
   // when the search transitions from !isComplete -> isComplete,
-  // fetch the results from the server
+  // fetch the initial results from the server
   useEffect(() => {
-    const get = async () => {
+    const getInitialResponses = async () => {
       try {
         setLoading(true);
-
         // the results may not be ready yet.  this is very rare, but
         // if it happens the search will complete with no results.
         await sleep(500);
 
-        const responses = await getResponses({ id });
-        setResults(responses);
+        const initialResponses = await getResponses({ id, skip: 0, take: PAGE_SIZE });
+        setResults(initialResponses);
+        setLoadedCount(initialResponses.length);
         setLoading(false);
       } catch (getError) {
         setError(getError);
@@ -84,9 +85,22 @@ const SearchDetail = ({
     };
 
     if (isComplete) {
-      get();
+      getInitialResponses();
     }
   }, [id, isComplete]);
+
+  const loadMoreResponses = async () => {
+    try {
+      setLoading(true);
+      const newResponses = await getResponses({ id, skip: loadedCount, take: PAGE_SIZE });
+      setResults((prevResults) => [...prevResults, ...newResponses]);
+      setLoadedCount((prevCount) => prevCount + newResponses.length);
+      setLoading(false);
+    } catch (getError) {
+      setError(getError);
+      setLoading(false);
+    }
+  };
 
   // apply sorting and filters.  this can take a while for larger result
   // sets, so memoize it.
@@ -166,7 +180,7 @@ const SearchDetail = ({
     setError(undefined);
     setResults([]);
     setHiddenResults([]);
-    setDisplayCount(5);
+    setLoadedCount(0);
   };
 
   const create = async ({ navigate, search: searchForCreate }) => {
@@ -179,9 +193,8 @@ const SearchDetail = ({
     onRemove(search);
   };
 
-  const filteredCount = results?.length - sortedAndFilteredResults.length;
-  const remainingCount = sortedAndFilteredResults.length - displayCount;
-  const loaded = !removing && !creating && !loading && results;
+const filteredCount = results?.length - sortedAndFilteredResults.length;
+const loaded = !removing && !creating && !loading && results;
 
   if (error) {
     return <ErrorSegment caption={error?.message ?? error} />;
@@ -281,7 +294,7 @@ const SearchDetail = ({
           </Segment>
         )}
         {loaded &&
-          sortedAndFilteredResults.slice(0, displayCount).map((r) => (
+          sortedAndFilteredResults.map((r) => (
             <Response
               disabled={disabled}
               isInitiallyFolded={foldResults}
@@ -291,16 +304,15 @@ const SearchDetail = ({
             />
           ))}
         {loaded &&
-          (remainingCount > 0 ? (
+          (loadedCount < responseCount ? ( // Assuming responseCount from search object is the total count
             <Button
               className="showmore-button"
               fluid
-              onClick={() => setDisplayCount(displayCount + 5)}
+              onClick={loadMoreResponses}
               primary
               size="large"
             >
-              Show {remainingCount > 5 ? 5 : remainingCount} More Results{' '}
-              {`(${remainingCount} remaining, ${filteredCount} hidden by filter(s))`}
+              Show More Results ({responseCount - loadedCount} remaining)
             </Button>
           ) : filteredCount > 0 ? (
             <Button

@@ -22,8 +22,9 @@ namespace slskd.Common.Middleware
 
         public async Task Invoke(HttpContext context)
         {
-            // Only apply rate limiting to authentication endpoints
-            if (!context.Request.Path.StartsWithSegments("/api/v0/auth"))
+            // Only apply rate limiting to authentication and search endpoints
+            if (!context.Request.Path.StartsWithSegments("/api/v0/auth") &&
+                !context.Request.Path.StartsWithSegments("/api/v0/searches"))
             {
                 await _next(context);
                 return;
@@ -42,15 +43,34 @@ namespace slskd.Common.Middleware
                 return;
             }
 
-            var bucket = _buckets.GetOrAdd(clientIp, _ => new TokenBucket(
-                _rateLimitingOptions.LoginAttempts,
-                (int)TimeSpan.FromMinutes(_rateLimitingOptions.WindowMinutes).TotalMilliseconds));
+            var bucket = _buckets.GetOrAdd(clientIp, _ =>
+            {
+                // Use different rate limiting settings for search vs. auth
+                if (context.Request.Path.StartsWithSegments("/api/v0/searches"))
+                {
+                    // Example: 10 searches per minute per IP
+                    return new TokenBucket(10, (int)TimeSpan.FromMinutes(1).TotalMilliseconds);
+                }
+                else // /api/v0/auth
+                {
+                    return new TokenBucket(
+                        _rateLimitingOptions.LoginAttempts,
+                        (int)TimeSpan.FromMinutes(_rateLimitingOptions.WindowMinutes).TotalMilliseconds);
+                }
+            });
 
             // Use the non-blocking TryTake to check for available tokens
             if (!bucket.TryTake(1, out _))
             {
                 context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                await context.Response.WriteAsync("Too many login attempts. Please try again later.");
+                if (context.Request.Path.StartsWithSegments("/api/v0/searches"))
+                {
+                    await context.Response.WriteAsync("Too many search requests. Please try again later.");
+                }
+                else
+                {
+                    await context.Response.WriteAsync("Too many login attempts. Please try again later.");
+                }
                 return;
             }
 

@@ -24,9 +24,11 @@ export const getStatus = async ({ id, includeResponses = false }) => {
   ).data;
 };
 
-export const getResponses = async ({ id }) => {
+export const getResponses = async ({ id, skip = 0, take = 25 }) => {
   const response = (
-    await api.get(`/searches/${encodeURIComponent(id)}/responses`)
+    await api.get(
+      `/searches/${encodeURIComponent(id)}/responses?skip=${skip}&take=${take}`,
+    )
   ).data;
 
   if (!Array.isArray(response)) {

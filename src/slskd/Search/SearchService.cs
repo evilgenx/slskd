@@ -15,6 +15,7 @@
 //     along with this program.  If not, see https://www.gnu.org/licenses/.
 // </copyright>
 
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace slskd.Search
@@ -110,17 +111,22 @@ namespace slskd.Search
         /// <param name="optionsMonitor"></param>
         /// <param name="soulseekClient"></param>
         /// <param name="contextFactory">The database context to use.</param>
+        /// <param name="memoryCache">The memory cache to use.</param>
         public SearchService(
             IHubContext<SearchHub> searchHub,
             IOptionsMonitor<Options> optionsMonitor,
             ISoulseekClient soulseekClient,
-            IDbContextFactory<SearchDbContext> contextFactory)
+            IDbContextFactory<SearchDbContext> contextFactory,
+            IMemoryCache memoryCache)
         {
             SearchHub = searchHub;
             OptionsMonitor = optionsMonitor;
             Client = soulseekClient;
             ContextFactory = contextFactory;
+            MemoryCache = memoryCache;
         }
+
+        private const string SearchCacheKey = "SearchCache";
 
         private ConcurrentDictionary<Guid, CancellationTokenSource> CancellationTokens { get; }
             = new ConcurrentDictionary<Guid, CancellationTokenSource>();
@@ -128,6 +134,7 @@ namespace slskd.Search
         private ISoulseekClient Client { get; }
         private IDbContextFactory<SearchDbContext> ContextFactory { get; }
         private ILogger Log { get; set; } = Serilog.Log.ForContext<Application>();
+        private IMemoryCache MemoryCache { get; }
         private IOptionsMonitor<Options> OptionsMonitor { get; }
         private IHubContext<SearchHub> SearchHub { get; set; }
 
@@ -151,6 +158,8 @@ namespace slskd.Search
                 context.Searches.Remove(search);
                 context.SaveChanges();
 
+                MemoryCache.Remove($"{SearchCacheKey}-{search.Id}");
+
                 await SearchHub.BroadcastDeleteAsync(search);
             }
         }
@@ -162,11 +171,23 @@ namespace slskd.Search
         /// <param name="includeResponses">A value indicating whether to include search responses in the result.</param>
         /// <returns>The found search, or default if not found.</returns>
         /// <exception cref="ArgumentException">Thrown when an expression is not supplied.</exception>
-        public Task<Search> FindAsync(Expression<Func<Search, bool>> expression, bool includeResponses = false)
+        public async Task<Search> FindAsync(Expression<Func<Search, bool>> expression, bool includeResponses = false)
         {
             if (expression == default)
             {
                 throw new ArgumentException("An expression must be supplied.", nameof(expression));
+            }
+
+            // Attempt to get the search from the cache if responses are requested and the expression is a simple ID equality
+            if (includeResponses && expression.Body is BinaryExpression binaryExpression &&
+                binaryExpression.NodeType == ExpressionType.Equal &&
+                binaryExpression.Left is MemberExpression leftMember && leftMember.Member.Name == "Id" &&
+                binaryExpression.Right is ConstantExpression rightConstant && rightConstant.Value is Guid searchId)
+            {
+                if (MemoryCache.TryGetValue($"{SearchCacheKey}-{searchId}", out Search cachedSearch))
+                {
+                    return cachedSearch;
+                }
             }
 
             using var context = ContextFactory.CreateDbContext();
@@ -180,7 +201,7 @@ namespace slskd.Search
                 selector = selector.WithoutResponses();
             }
 
-            return selector.FirstOrDefaultAsync();
+            return await selector.FirstOrDefaultAsync();
         }
 
         /// <summary>
@@ -349,6 +370,9 @@ namespace slskd.Search
                         search.Responses = responses.Select(r => Response.FromSoulseekSearchResponse(r));
 
                         Update(search);
+
+                        // Cache the completed search with its responses
+                        MemoryCache.Set($"{SearchCacheKey}-{search.Id}", search, TimeSpan.FromMinutes(5)); // Cache for 5 minutes
 
                         // zero responses before broadcasting, as we don't want to blast this
                         // data out over the SignalR socket
