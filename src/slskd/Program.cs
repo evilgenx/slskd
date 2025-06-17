@@ -415,8 +415,11 @@ namespace slskd
             Flags = OptionsAtStartup.Flags;
 
             // Get credentials from environment variables if available
-            var soulseekUsername = Environment.GetEnvironmentVariable("SLSKD_USERNAME");
-            var soulseekPassword = Environment.GetEnvironmentVariable("SLSKD_PASSWORD");
+            // First try prefixed variables (Docker Compose support), then fall back to non-prefixed
+            var soulseekUsername = Environment.GetEnvironmentVariable("SLSKD_USERNAME") 
+                ?? Environment.GetEnvironmentVariable("SLSK_USERNAME");
+            var soulseekPassword = Environment.GetEnvironmentVariable("SLSKD_PASSWORD") 
+                ?? Environment.GetEnvironmentVariable("SLSK_PASSWORD");
             
             if (!string.IsNullOrEmpty(soulseekUsername) && !string.IsNullOrEmpty(soulseekPassword))
             {
