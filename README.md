@@ -1,19 +1,20 @@
 # slskd
 
-[![Build](https://img.shields.io/github/actions/workflow/status/slskd/slskd/ci.yml?branch=master&logo=github)](https://github.com/slskd/slskd/actions/workflows/ci.yml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/slskd/slskd?logo=docker)](https://hub.docker.com/r/slskd/slskd)
-[![GitHub all releases](https://img.shields.io/github/downloads/slskd/slskd/total?logo=github&color=brightgreen)](https://github.com/slskd/slskd/releases)
-[![Contributors](https://img.shields.io/github/contributors/slskd/slskd?logo=github)](https://github.com/slskd/slskd/graphs/contributors)
+[![Docker Image Size](https://img.shields.io/docker/image-size/slskd/slskd/latest?logo=docker)](https://hub.docker.com/r/slskd/slskd)
+[![Docker Version](https://img.shields.io/docker/v/slskd/slskd?logo=docker)](https://hub.docker.com/r/slskd/slskd)
+[![Build](https://img.shields.io/github/actions/workflow/status/slskd/slskd/ci.yml?branch=master&logo=github)](https://github.com/slskd/slskd/actions/workflows/ci.yml)
+[![GitHub Downloads](https://img.shields.io/github/downloads/slskd/slskd/total?logo=github&color=brightgreen)](https://github.com/slskd/slskd/releases)
 [![Discord](https://img.shields.io/discord/971446666257391616?label=Discord&logo=discord)](https://slskd.org/discord)
-[![Matrix](https://img.shields.io/badge/Matrix-%3F%20online-na?logo=matrix&color=brightgreen)](https://slskd.org/matrix)
 
 A modern client-server application for the [Soulseek](https://www.slsknet.org/news/) file-sharing network.
 
+> **Note for Docker Hub Users**: This README is optimized for both GitHub and Docker Hub. Some visual elements may appear differently on Docker Hub.
+
 ## Table of Contents
+- [Docker Quick Start](#docker-quick-start)
 - [Features](#features)
-- [Quick Start](#quick-start)
-  - [With Docker](#with-docker)
-  - [With Binaries](#with-binaries)
+- [For GitHub Users](#for-github-users)
 - [Configuration](#configuration)
 - [HTTPS Setup](#https-setup)
 - [Troubleshooting](#troubleshooting)
@@ -21,46 +22,21 @@ A modern client-server application for the [Soulseek](https://www.slsknet.org/ne
 
 ## Features
 
-### Secure access
+- **Secure Access**: Token-based authentication with reverse proxy support
+- **Advanced Search**: Multiple concurrent searches with filtering
+- **Results Management**: Sort, filter, and download search results
+- **Download Monitoring**: Track progress and manage queues
+- **User Shares**: Browse other users' shared files
+- **Chat Rooms**: Join and participate in group discussions
+- **Private Messaging**: Direct communication with other users
+- **Enhanced Security**:
+  - Automatic HTTP security headers (CSP, HSTS, etc.)
+  - Authentication rate limiting
+  - Secure token-based access
 
-slskd runs as a daemon or Docker container in your network (or in the cloud!) and is accessible from a web browser. It's designed to be exposed to the internet, and everything is secured with a token that [you can control](docs/config.md#authentication). It also supports [reverse proxies](docs/reverse_proxy.md), making it work well with other self-hosted tools.
+## Docker Quick Start
 
-![Secure Access](https://user-images.githubusercontent.com/17145758/193290217-0e6d87f5-a547-4451-8d90-d554a902716c.png)
-
-### Search
-
-Search for things just like you're used to with the official Soulseek client. slskd makes it easy to enter multiple searches quickly.
-
-![Search](https://user-images.githubusercontent.com/17145758/193286989-30bd524d-81b6-4721-bd72-e4438c2b7b69.png)
-
-### Results
-
-Sort and filter search results using the same filters you use today. Dismiss results you're not interested in, and download the ones you want in a couple of clicks.
-
-![Results](https://user-images.githubusercontent.com/17145758/193288396-dc3cc83d-6d93-414a-93f6-cea0696ac245.png)
-
-### Downloads
-
-Monitor the speed and status of downloads, grouped by user and folder. Click the progress bar to fetch your place in queue, and use the selection tools to cancel, retry, or clear completed downloads. Use the controls at the top to quickly manage downloads by status.
-
-![Downloads](https://user-images.githubusercontent.com/17145758/193289840-3aee153f-3656-4f15-b086-8b1ca25d38bb.png)
-
-### Pretty much everything else
-
-slskd can do almost everything the official Soulseek client can; browse user shares, join chat rooms, privately chat with other users.
-
-New features are added all the time!
-
-### Enhanced Security
-
-slskd now includes advanced security features to protect your instance:
-
--   **Security Headers**: Automatically adds HTTP security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, and Public-Key-Pins) to mitigate common web vulnerabilities. These can be configured in `config/slskd.yml` under the `security.headers` section.
--   **Rate Limiting**: Protects authentication endpoints from brute-force attacks by limiting the number of login attempts per IP address. Configurable in `config/slskd.yml` under the `security.rateLimiting` section.
-
-## Quick Start
-
-### With Docker
+### Basic Docker Run
 
 ```shell
 docker run -d \
@@ -73,7 +49,7 @@ docker run -d \
   slskd/slskd:latest
 ```
 
-### With Docker-Compose
+### Docker Compose
 
 ```yaml
 version: "2"
@@ -100,70 +76,47 @@ services:
     restart: always
 ```
 
-This command or docker-compose file (depending on your choice) starts a container instance of slskd on ports 5030 (HTTP) and 5031 (HTTPS using a self-signed certificate). slskd begins listening for incoming connections on port 50300 and maps the application directory to the provided path.
+**Getting Started:**
+1. Create `.env` file with your credentials
+2. Start container: `docker-compose up -d`
+3. Access web UI at `http://localhost:5030`
+4. Default credentials: `slskd`/`slskd` (change immediately!)
 
-Once the container is running you can access the web UI over HTTP on port 5030, or HTTPS on port 5031. The default username and password are `slskd` and `slskd`, respectively. You'll want to change these if the application will be internet facing.
+**Security Recommendations:**
+- Disable `SLSKD_REMOTE_CONFIGURATION` for production
+- Use Docker secrets instead of `.env` for sensitive data
+- Add `.env` to `.gitignore` to prevent accidental commits
 
-The `SLSKD_REMOTE_CONFIGURATION` environment variable allows you to modify application configuration settings from the web UI. You might not want to enable this for an internet-facing installation.
+> Full Docker guide: [docker.md](docs/docker.md)
 
-You can find a more in-depth guide to running slskd in Docker in [docker.md](docs/docker.md).
+## For GitHub Users
 
-### Using .env for Credentials
+### Binary Installation
 
-For secure credential management, create a `.env` file in your project root:
+Download the latest binaries from [releases](https://github.com/slskd/slskd/releases). Extract the zip file to your preferred directory and run the executable.
 
-```env
-SLSKD_USERNAME=your_soulseek_username
-SLSKD_PASSWORD=your_soulseek_password
+**Permissions Note:**
+```bash
+sudo chown -R $USER:$USER ~/.local/share/slskd
+sudo chmod -R 755 ~/.local/share/slskd
 ```
 
-Then update your `docker-compose.yml` to reference these variables:
+The application creates:
+- `~/.local/share/slskd` (Linux/macOS)
+- `%localappdata%/slskd` (Windows)
 
-```yaml
-env_file:
-  - .env
-environment:
-  - SLSKD_USERNAME=${SLSKD_USERNAME}
-  - SLSKD_PASSWORD=${SLSKD_PASSWORD}
+Edit `slskd.yml` for configuration.
+
+### Development & Contribution
+
+```bash
+git clone https://github.com/slskd/slskd.git
+cd slskd
+dotnet build
+dotnet run --project src/slskd
 ```
 
-**Security Note:** 
-- Never commit `.env` files to source control
-- Add `.env` to your `.gitignore` file
-- Consider using Docker secrets for production deployments
-
-### Troubleshooting Permission Issues
-
-If you encounter errors like "Directory /app/data is not writeable":
-- Add `:z` suffix to volume mounts in docker-compose.yml
-- Set proper permissions on host directories:
-  ```bash
-  sudo chown -R $USER:$USER <path/to/application/data>
-  sudo chmod -R 755 <path/to/application/data>
-  ```
-This is especially important on SELinux-enabled systems.
-
-### Troubleshooting .env Issues
-
-If your environment variables aren't loading:
-1. Verify `.env` is in the same directory as `docker-compose.yml`
-2. Check variable names match exactly (case-sensitive)
-3. Restart container: `docker-compose up -d --force-recreate`
-4. View variables: `docker-compose exec slskd env`
-
-### With Binaries
-
-The latest stable binaries can be downloaded from the [releases](https://github.com/slskd/slskd/releases) page. Platform-specific binaries and the static content for the Web UI are produced as artifacts from every [build](https://github.com/slskd/slskd/actions?query=workflow%3ACI) if you'd prefer to use a canary release.
-
-Binaries are shipped as zip files; extract the zip to your chosen directory and run.
-
-> **Note**: Ensure the application directory has proper write permissions:
-> ```bash
-> sudo chown -R $USER:$USER ~/.local/share/slskd
-> sudo chmod -R 755 ~/.local/share/slskd
-> ```
->
-> An application directory will be created in either `~/.local/share/slskd` (on Linux and macOS) or `%localappdata%/slskd` (on Windows). In the root of this directory the file `slskd.yml` will be created the first time the application runs. Edit this file to enter your credentials for the Soulseek network, and tweak any additional settings using the [configuration guide](docs/config.md).
+See our [CONTRIBUTING guidelines](CONTRIBUTING.md) for details.
 
 ## HTTPS Setup
 
@@ -211,9 +164,66 @@ ports:
 
 ## Reverse Proxy with Caddy
 
-Caddy is an easy-to-use, open-source web server with automatic HTTPS. It's an excellent choice for proxying `slskd`.
+Caddy is an easy-to-use, open-source web server with automatic HTTPS. It's an excellent choice for proxying `slskd`. Here's a detailed configuration guide:
 
-For detailed configuration examples and instructions, please refer to [caddy.md](docs/caddy.md).
+### Basic Caddyfile Configuration
+```Caddyfile
+yourdomain.com {
+    reverse_proxy localhost:5030 {
+        header_up X-Real-IP {remote_host}
+    }
+}
+```
+
+### Configuration with Custom Headers
+```Caddyfile
+yourdomain.com {
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000;"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Content-Security-Policy "default-src 'self';"
+    }
+
+    # Reverse proxy to slskd
+    reverse_proxy localhost:5030
+}
+```
+
+### Docker Compose Integration
+```yaml
+version: "3"
+services:
+  slskd:
+    image: slskd/slskd
+    # ... [other slskd configuration]
+    ports:
+      - "127.0.0.1:5030:5030"  # Internal only
+
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
+```
+
+### Automatic HTTPS Features
+Caddy automatically:
+1. Obtains and renews Let's Encrypt certificates
+2. Redirects HTTP → HTTPS
+3. Enables HTTP/2 and HTTP/3 (QUIC)
+4. Implements best-practice security headers
+
+For advanced configurations including load balancing and caching, see [caddy.md](docs/caddy.md).
 
 ## Configuration
 

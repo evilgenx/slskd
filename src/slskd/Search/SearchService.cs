@@ -15,7 +15,6 @@
 //     along with this program.  If not, see https://www.gnu.org/licenses/.
 // </copyright>
 
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace slskd.Search
@@ -28,7 +27,6 @@ namespace slskd.Search
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.SignalR;
-    using Microsoft.EntityFrameworkCore;
     using Serilog;
     using slskd.Search.API;
     using Soulseek;
@@ -110,62 +108,46 @@ namespace slskd.Search
         /// <param name="searchHub"></param>
         /// <param name="optionsMonitor"></param>
         /// <param name="soulseekClient"></param>
-        /// <param name="contextFactory">The database context to use.</param>
-        /// <param name="memoryCache">The memory cache to use.</param>
+        /// <param name="repository">The search repository to use.</param>
         /// <param name="userService">The user service to use.</param>
         public SearchService(
             IHubContext<SearchHub> searchHub,
             IOptionsMonitor<Options> optionsMonitor,
             ISoulseekClient soulseekClient,
-            IDbContextFactory<SearchDbContext> contextFactory,
-            IMemoryCache memoryCache,
+            ISearchRepository repository,
             Users.IUserService userService)
         {
             SearchHub = searchHub;
             OptionsMonitor = optionsMonitor;
             Client = soulseekClient;
-            ContextFactory = contextFactory;
-            MemoryCache = memoryCache;
+            Repository = repository;
             UserService = userService;
         }
-
-        private const string SearchCacheKey = "SearchCache";
 
         private ConcurrentDictionary<Guid, CancellationTokenSource> CancellationTokens { get; }
             = new ConcurrentDictionary<Guid, CancellationTokenSource>();
 
         private ISoulseekClient Client { get; }
-        private IDbContextFactory<SearchDbContext> ContextFactory { get; }
         private ILogger Log { get; set; } = Serilog.Log.ForContext<Application>();
-        private IMemoryCache MemoryCache { get; }
         private IOptionsMonitor<Options> OptionsMonitor { get; }
         private IHubContext<SearchHub> SearchHub { get; set; }
         private Users.IUserService UserService { get; }
+        private ISearchRepository Repository { get; }
 
         /// <summary>
         ///     Deletes the specified search.
         /// </summary>
         /// <param name="search">The search to delete.</param>
         /// <returns>The operation context.</returns>
-        public Task DeleteAsync(Search search)
+        public async Task DeleteAsync(Search search)
         {
             if (search == default)
             {
                 throw new ArgumentNullException(nameof(search));
             }
 
-            return DoDeleteAsync(search);
-
-            async Task DoDeleteAsync(Search search)
-            {
-                using var context = ContextFactory.CreateDbContext();
-                context.Searches.Remove(search);
-                context.SaveChanges();
-
-                MemoryCache.Remove($"{SearchCacheKey}-{search.Id}");
-
-                await SearchHub.BroadcastDeleteAsync(search);
-            }
+            await Repository.DeleteAsync(search);
+            await SearchHub.BroadcastDeleteAsync(search);
         }
 
         /// <summary>
@@ -182,30 +164,7 @@ namespace slskd.Search
                 throw new ArgumentException("An expression must be supplied.", nameof(expression));
             }
 
-            // Attempt to get the search from the cache if responses are requested and the expression is a simple ID equality
-            if (includeResponses && expression.Body is BinaryExpression binaryExpression &&
-                binaryExpression.NodeType == ExpressionType.Equal &&
-                binaryExpression.Left is MemberExpression leftMember && leftMember.Member.Name == "Id" &&
-                binaryExpression.Right is ConstantExpression rightConstant && rightConstant.Value is Guid searchId)
-            {
-                if (MemoryCache.TryGetValue($"{SearchCacheKey}-{searchId}", out Search cachedSearch))
-                {
-                    return cachedSearch;
-                }
-            }
-
-            using var context = ContextFactory.CreateDbContext();
-
-            var selector = context.Searches
-                .AsNoTracking()
-                .Where(expression);
-
-            if (!includeResponses)
-            {
-                selector = selector.WithoutResponses();
-            }
-
-            return await selector.FirstOrDefaultAsync();
+            return await Repository.FindAsync(expression, includeResponses);
         }
 
         /// <summary>
@@ -215,14 +174,7 @@ namespace slskd.Search
         /// <returns>The list of searches matching the specified expression, or all searches if no expression is specified.</returns>
         public Task<List<Search>> ListAsync(Expression<Func<Search, bool>> expression = null)
         {
-            expression ??= s => true;
-            using var context = ContextFactory.CreateDbContext();
-
-            return context.Searches
-                .AsNoTracking()
-                .Where(expression)
-                .WithoutResponses()
-                .ToListAsync();
+            return Repository.ListAsync(expression);
         }
 
         /// <summary>
@@ -231,9 +183,7 @@ namespace slskd.Search
         /// <param name="search">The search to update.</param>
         public void Update(Search search)
         {
-            using var context = ContextFactory.CreateDbContext();
-            context.Update(search);
-            context.SaveChanges();
+            Repository.UpdateAsync(search).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -247,17 +197,63 @@ namespace slskd.Search
         public async Task<Search> StartAsync(Guid id, SearchQuery query, SearchScope scope, SearchOptions options = null)
         {
             var token = Client.GetNextToken();
-
             var cancellationTokenSource = new CancellationTokenSource();
             CancellationTokens.TryAdd(id, cancellationTokenSource);
-
             var rateLimiter = new RateLimiter(250);
 
-            // Extract file types from search text
+            // Initialize search record
+            var search = new Search()
+            {
+                SearchText = query.SearchText,
+                Token = token,
+                Id = id,
+                State = SearchStates.Requested,
+                StartedAt = DateTime.UtcNow,
+                FileTypes = ExtractFileTypes(query.SearchText)
+            };
+
+            try
+            {
+                await Repository.AddAsync(search);
+                await SearchHub.BroadcastCreateAsync(search);
+
+                List<SearchResponse> responses = new();
+                options ??= new SearchOptions();
+                
+                options = options.WithActions(
+                    stateChanged: (args) => HandleStateChange(args, search, id),
+                    responseReceived: (args) => rateLimiter.Invoke(() => HandleResponseReceived(args, search)));
+
+                var soulseekSearchTask = Client.SearchAsync(
+                    query,
+                    responseHandler: responses.Add,
+                    scope,
+                    token,
+                    options,
+                    cancellationToken: cancellationTokenSource.Token);
+
+                _ = Task.Run(async () =>
+                {
+                    var soulseekSearch = await soulseekSearchTask;
+                    search = search.WithSoulseekSearch(soulseekSearch);
+                    Log.Debug("Search for '{Query}' ended normally (id: {Id})", query, id);
+                }, cancellationTokenSource.Token)
+                .ContinueWith(async task => await FinalizeSearch(task, search, responses, id, query, rateLimiter));
+
+                await SearchHub.BroadcastUpdateAsync(search);
+                return search;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to execute search {Search}: {Message}", new { query, scope, options }, ex.Message);
+                await HandleFailedSearch(search, query);
+                throw;
+            }
+        }
+
+        private List<string> ExtractFileTypes(string searchText)
+        {
             var fileTypes = new List<string>();
-            var searchText = query.SearchText;
-            
-            // Common file type patterns
             var typePatterns = new Dictionary<string, string[]>
             {
                 { "audio", new[] { "mp3", "flac", "wav", "aac", "ogg", "m4a" } },
@@ -267,167 +263,79 @@ namespace slskd.Search
                 { "archive", new[] { "zip", "rar", "7z", "tar", "gz" } }
             };
 
-            // Check for file type filters in search text
             foreach (var type in typePatterns)
             {
-                if (type.Value.Any(ext => searchText.Contains($" .{ext} ", StringComparison.OrdinalIgnoreCase) || 
-                                         searchText.EndsWith($".{ext}", StringComparison.OrdinalIgnoreCase)))
+                if (type.Value.Any(ext => 
+                    searchText.Contains($" .{ext} ", StringComparison.OrdinalIgnoreCase) || 
+                    searchText.EndsWith($".{ext}", StringComparison.OrdinalIgnoreCase)))
                 {
                     fileTypes.Add(type.Key);
                 }
             }
 
-            // initialize the search record, save it to the database, and broadcast the creation
-            var search = new Search()
-            {
-                SearchText = searchText,
-                Token = token,
-                Id = id,
-                State = SearchStates.Requested,
-                StartedAt = DateTime.UtcNow,
-                FileTypes = fileTypes
-            };
+            return fileTypes;
+        }
 
-            bool searchCreated = false;
-            bool searchBroadcasted = false;
+        private void HandleStateChange((Soulseek.SearchStates PreviousState, Soulseek.Search Search) args, Search search, Guid id)
+        {
+            search = search.WithSoulseekSearch(args.Search);
+            SearchHub.BroadcastUpdateAsync(search);
+            Update(search);
+            Log.Debug("Search state changed: {State} (id: {Id})", search.State, id);
+        }
 
+        private void HandleResponseReceived((Soulseek.Search Search, Soulseek.SearchResponse Response) args, Search search)
+        {
+            search.ResponseCount = args.Search.ResponseCount;
+            search.FileCount = args.Search.FileCount;
+            search.LockedFileCount = args.Search.LockedFileCount;
+            SearchHub.BroadcastUpdateAsync(search);
+            Update(search);
+        }
+
+        private async Task FinalizeSearch(Task task, Search search, List<SearchResponse> responses, Guid id, SearchQuery query, RateLimiter rateLimiter)
+        {
             try
             {
-                using var context = ContextFactory.CreateDbContext();
-                context.Add(search);
-                context.SaveChanges();
-
-                searchCreated = true;
-
-                await SearchHub.BroadcastCreateAsync(search);
-
-                searchBroadcasted = true;
-
-                // initialize the list of responses that we'll use to accumulate them
-                // populated by the responseHandler we pass to SearchAsync
-                List<SearchResponse> responses = new();
-
-                options ??= new SearchOptions();
-                options = options.WithActions(
-                    stateChanged: (args) =>
-                    {
-                        // this logic is executed by Soulseek.NET upon each transition of the searcn, including the final
-                        // transition to Completed. if for some reason something goes wrong, we won't see the final Completed
-                        // transition, we should instead see the task below throw, in which case it will become
-                        // faulted and we'll set the Completed flag manually in the ContinueWith() block
-                        search = search.WithSoulseekSearch(args.Search);
-                        SearchHub.BroadcastUpdateAsync(search);
-                        Update(search);
-
-                        Log.Debug("Search for '{Query}' state changed: {State} (id: {Id})", query, search.State, id);
-                    },
-                    responseReceived: (args) => rateLimiter.Invoke(() =>
-                    {
-                        // note: this is rate limited, but has the potential to update the database every 250ms (or whatever the
-                        // interval is set to) for the duration of the search. any issues with disk i/o or performance while searches
-                        // are running should investigate this as a cause
-                        search.ResponseCount = args.Search.ResponseCount;
-                        search.FileCount = args.Search.FileCount;
-                        search.LockedFileCount = args.Search.LockedFileCount;
-
-                        // note that we're not actually doing anything with the response here, that's happening in the
-                        // response handler. we're only updating counts here.
-                        SearchHub.BroadcastUpdateAsync(search);
-                        Update(search);
-                    }));
-
-                // initiate the search. this can throw at invocation if there's a problem with
-                // the client state (e.g. disconnected) or a problem with the search (e.g. no terms)
-                var soulseekSearchTask = Client.SearchAsync(
-                    query,
-                    responseHandler: (response) => responses.Add(response),
-                    scope,
-                    token,
-                    options,
-                    cancellationToken: cancellationTokenSource.Token);
-
-                // search looks ok so far; let the rest of the logic run asynchronously
-                // on a background thread. this logic needs to clean up after itself and
-                // update the search record to accurately reflect the final state
-                _ = Task.Run(async () =>
+                if (task.IsFaulted)
                 {
-                    var soulseekSearch = await soulseekSearchTask;
-                    search = search.WithSoulseekSearch(soulseekSearch);
+                    Log.Error(task.Exception, "Failed to execute search for '{Query}' (id: {Id}): {Message}", query, id, task.Exception?.Message ?? "Task completed in Faulted state, but there is no Exception");
+                    search.State = SearchStates.Completed | SearchStates.Errored;
+                }
 
-                    Log.Debug("Search for '{Query}' ended normally (id: {Id})", query, id);
-                }, cancellationToken: cancellationTokenSource.Token)
-                .ContinueWith(async task =>
+                search.EndedAt = DateTime.UtcNow;
+                search.Responses = responses.Select(r => 
                 {
-                    try
-                    {
-                        // the only way we should ever get to this point is if we encounter an error sending the search
-                        // request to the server (timeout, cancelled) or hit some highly improbable error within Soulseek.NET,
-                        // potentially OOM or something. in these cases the task will throw and we need to force the
-                        // search record into Errored state.
-                        if (task.IsFaulted)
-                        {
-                            Log.Error(task.Exception, "Failed to execute search for '{Query}' (id: {Id}): {Message}", query, id, task.Exception?.Message ?? "Task completed in Faulted state, but there is no Exception");
-                            search.State = SearchStates.Completed | SearchStates.Errored;
-                        }
+                    var response = Response.FromSoulseekSearchResponse(r);
+                    response.UserGroup = UserService.GetGroup(response.Username);
+                    return response;
+                }).ToList();
 
-                        search.EndedAt = DateTime.UtcNow;
-                        var searchResponses = responses.Select(r =>
-                        {
-                            var response = Response.FromSoulseekSearchResponse(r);
-                            // Get and assign user group
-                            response.UserGroup = UserService.GetGroup(response.Username);
-                            return response;
-                        }).ToList();
-                        search.Responses = searchResponses;
-
-                        Update(search);
-
-                        // Cache the completed search with its responses
-                        MemoryCache.Set($"{SearchCacheKey}-{search.Id}", search, TimeSpan.FromMinutes(5)); // Cache for 5 minutes
-
-                        // zero responses before broadcasting, as we don't want to blast this
-                        // data out over the SignalR socket
-                        await SearchHub.BroadcastUpdateAsync(search with { Responses = new List<Response>() });
-
-                        Log.Debug("Search for '{Query}' finalized (id: {Id}): {Search}", query, id, search with { Responses = [] });
-                    }
-                    catch (Exception ex)
-                    {
-                        // record may be left 'hanging' and will need to be cleaned up at the next boot; we tried to update but failed
-                        Log.Error(ex, "Failed to finalize search for '{Query}' (id: {Id}): {Message}", query, id, ex.Message);
-                        throw;
-                    }
-                    finally
-                    {
-                        rateLimiter.Dispose();
-                        CancellationTokens.TryRemove(id, out _);
-                    }
-                });
-
-                // broadcast and return the _newly created_ search; it will continue to be updated in the background
-                await SearchHub.BroadcastUpdateAsync(search);
-                return search;
+                Update(search);
+                Repository.CacheSearch(search);
+                await SearchHub.BroadcastUpdateAsync(search with { Responses = new List<Response>() });
+                Log.Debug("Search for '{Query}' finalized (id: {Id})", query, id);
             }
             catch (Exception ex)
             {
-                // we'll end up here if the initial call throws for an ArgumentException, InvalidOperationException if
-                // the app isn't connected, and a few other straightforward issues that arise before even requesting the search
-                Log.Error(ex, "Failed to execute search {Search}: {Message}", new { query, scope, options }, ex.Message);
-
-                // selectively 'undo' whatever actions we were able to take successfully
-                if (searchCreated)
-                {
-                    search.State = SearchStates.Completed | SearchStates.Errored;
-                    search.EndedAt = search.StartedAt;
-                    Update(search);
-
-                    if (searchBroadcasted)
-                    {
-                        await SearchHub.BroadcastUpdateAsync(search with { Responses = [] });
-                    }
-                }
-
+                Log.Error(ex, "Failed to finalize search for '{Query}' (id: {Id}): {Message}", query, id, ex.Message);
                 throw;
+            }
+            finally
+            {
+                rateLimiter.Dispose();
+                CancellationTokens.TryRemove(id, out _);
+            }
+        }
+
+        private async Task HandleFailedSearch(Search search, SearchQuery query)
+        {
+            if (search.Id != Guid.Empty) // Check if search was persisted
+            {
+                search.State = SearchStates.Completed | SearchStates.Errored;
+                search.EndedAt = DateTime.UtcNow;
+                Update(search);
+                await SearchHub.BroadcastUpdateAsync(search with { Responses = new List<Response>() });
             }
         }
 
@@ -454,34 +362,7 @@ namespace slskd.Search
         /// <returns>The number of pruned records.</returns>
         public async Task<int> PruneAsync(int age)
         {
-            try
-            {
-                using var context = ContextFactory.CreateDbContext();
-
-                var cutoffDateTime = DateTime.UtcNow.AddMinutes(-age);
-
-                // unlike other pruning operations, we don't care about state, since there's a 60 minute minimum
-                // and searches are guaranteed to be at least 60 minutes old by the time they can be pruned, they will
-                // be completed unless someone applied some rather dumb settings
-                var expired = context.Searches
-                    .Where(s => s.EndedAt.HasValue && s.EndedAt.Value < cutoffDateTime)
-                    .WithoutResponses()
-                    .ToList();
-
-                // defer the deletion to DeleteAsync() so that SignalR broadcasting works properly and the UI
-                // is updated in real time
-                foreach (var search in expired)
-                {
-                    await DeleteAsync(search);
-                }
-
-                return expired.Count;
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to prune searches: {Message}", ex.Message);
-                throw;
-            }
+            return await Repository.PruneAsync(age);
         }
     }
 }
